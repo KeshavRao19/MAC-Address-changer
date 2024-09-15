@@ -4,25 +4,48 @@
 #Use --help to see all the parsing options for ease of use
 
 import subprocess
-import optparse
+import argparse
+import re
 
 def get_arguments():
-    parser = optparse.OptionParser()
-    parser.add_option("-i", "--interface", dest="interface", help="Defines the interface to change its MAC address.")
-    parser.add_option("-m", "--mac", dest="new_mac", help="Defines the new MAC address that is going to be changed on respective interface")
-    (options, arguments) = parser.parse_args()
-    if not options.interface:
-        parser.error("Please specify an interface, use --help for more info.")
-    elif not options.new_mac:
-        parser.error("Please specify a new MAC, use --help for more info.")
-    return options
+    parser = argparse.ArgumentParser(description="This will change MAC address of any network interface.")
+    parser.add_argument("-i", "--interface", required=True, help="Defines the interface to change its MAC address.")
+    parser.add_argument("-m", "--mac", required=True, help="Defines the new MAC address to assign to the specified interface.")
+    args = parser.parse_args()
+    return args
 
 def change_mac(interface, new_mac):
-    print("Changing the MAC address for " + interface + " to " + new_mac)
-    subprocess.call(["ifconfig",interface,"down"])
-    subprocess.call(["ifconfig",interface,"hw", "ether", new_mac])
-    subprocess.call(["ifconfig", interface,"up"])
+    print(f"Changing MAC address for {interface} to {new_mac}")
+    try:
+        subprocess.call(["sudo", "ifconfig", interface, "down"])
+        subprocess.call(["sudo", "ifconfig", interface, "hw", "ether", new_mac])
+        subprocess.call(["sudo", "ifconfig", interface, "up"])
+        print(f"MAC address changed successfully to {new_mac}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to change MAC address: {e}")
 
+def get_current_mac(interface):
+    try:
+        ifconfig_result = subprocess.check_output(["ifconfig", interface], encoding='utf-8')
+        search_result = re.search(r"(\w\w:\w\w:\w\w:\w\w:\w\w:\w\w)", ifconfig_result)
+        if search_result:
+            return search_result.group(0)
+        else:
+            print("Unable to fetch MAC address from the interface.")
+            return None
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to get MAC address: {e}")
+        return None
 
-options = get_arguments()
-change_mac(options.interface, options.new_mac)
+if __name__ == "__main__":
+    options = get_arguments()
+
+    current_mac = get_current_mac(options.interface)
+    if current_mac:
+        print(f"Current MAC = {current_mac}")
+        change_mac(options.interface, options.mac)
+        new_mac = get_current_mac(options.interface)
+        if new_mac == options.mac:
+            print(f"MAC address of {options.interface} was successfully changed to {new_mac}")
+        else:
+            print("MAC address change has failed...")
